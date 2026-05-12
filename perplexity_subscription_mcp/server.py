@@ -330,6 +330,75 @@ def get_thread(slug: str) -> dict:
         }
 
 
+@mcp.tool()
+def list_spaces(limit: int = 20, offset: int = 0) -> dict:
+    """
+    List all of the user's Perplexity Spaces.
+
+    Spaces are curated workspaces with custom instructions, suggested queries,
+    and a thread history scoped to a topic. Internally called "collections".
+
+    Args:
+        limit: Maximum number of spaces to return (default 20)
+        offset: Pagination offset (default 0)
+
+    Returns:
+        Dictionary with 'spaces' key containing a list of space summaries.
+        Each space includes: uuid, title, slug, emoji, updated_datetime.
+    """
+    client = get_client()
+    try:
+        result = client.list_collections(limit=limit, offset=offset)
+        return {"spaces": result}
+    except Exception as e:
+        return {"error": str(e), "spaces": []}
+
+
+@mcp.tool()
+def get_space(slug: str) -> dict:
+    """
+    Get full details of a Perplexity Space by its slug.
+
+    Includes the Space's custom 'instructions' (the system prompt that scopes
+    all queries inside the Space), description, suggested_queries, owner,
+    thread_count, page_count, and access metadata.
+
+    Args:
+        slug: The Space slug (from list_spaces results, e.g. "veradin-zZuV6Mu9TnGFS9seNbyBlQ")
+
+    Returns:
+        Dictionary with the full Space record, or {'error': ...} on failure.
+    """
+    client = get_client()
+    try:
+        return client.get_collection(slug)
+    except Exception as e:
+        return {"error": str(e), "slug": slug}
+
+
+@mcp.tool()
+def list_space_threads(space_uuid: str, limit: int = 20, offset: int = 0) -> dict:
+    """
+    List threads (saved conversations) inside a Perplexity Space.
+
+    Args:
+        space_uuid: The Space UUID (from list_spaces or get_space results)
+        limit: Maximum number of threads to return (default 20)
+        offset: Pagination offset (default 0)
+
+    Returns:
+        Dictionary with 'threads' key containing a list of thread summaries.
+        Use get_thread(slug) to fetch the full content of a specific thread.
+    """
+    client = get_client()
+    try:
+        result = client.list_collection_threads(
+            collection_uuid=space_uuid, limit=limit, offset=offset)
+        return {"threads": result}
+    except Exception as e:
+        return {"error": str(e), "threads": []}
+
+
 def main():
     """Main entry point for the MCP server."""
     mcp.run()

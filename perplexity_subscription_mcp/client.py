@@ -13,9 +13,25 @@ def normalize_cookies(cookies):
     - Flat dict: {"cookie_name": "cookie_value", ...} (project format)
     - Cookie Editor format: [{"name": "...", "value": "...", ...}, ...]
     Returns a flat dict suitable for requests.Session(cookies=...).
+
+    When the list contains multiple cookies with the same name from different
+    Perplexity subdomains (www.perplexity.ai vs console.perplexity.ai), prefer
+    the www / apex cookie since the wrapper calls www.perplexity.ai. Without
+    this, __Secure-next-auth.session-token can resolve to a stale console
+    session and the wrapper authenticates as the wrong Perplexity account.
     """
     if isinstance(cookies, list):
-        return {item["name"]: item["value"] for item in cookies if isinstance(item, dict) and "name" in item and "value" in item}
+        WWW_DOMAINS = ("www.perplexity.ai", ".perplexity.ai", "perplexity.ai")
+        out = {}
+        for item in cookies:
+            if not (isinstance(item, dict) and "name" in item and "value" in item):
+                continue
+            name = item["name"]
+            domain = item.get("domain", "")
+            if name in out and domain not in WWW_DOMAINS:
+                continue
+            out[name] = item["value"]
+        return out
     if isinstance(cookies, dict):
         return cookies
     return {}
@@ -276,6 +292,52 @@ class Client:
         url = "https://www.perplexity.ai/rest/thread/list_ask_threads?version=2.18&source=default"
         payload = {"limit": limit, "offset": offset, "search_term": search_term}
         resp = self.session.post(url, json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_collections(self, limit=20, offset=0):
+        """
+        List all of the user's Spaces (called "Collections" in the internal API).
+
+        Each item includes: uuid, title, slug, emoji, updated_datetime, has_next_page.
+        Returns a list, not a dict.
+        """
+        from urllib.parse import urlencode
+        params = urlencode({"version": "2.18", "source": "default",
+                            "limit": limit, "offset": offset})
+        url = f"https://www.perplexity.ai/rest/collections/list_user_collections?{params}"
+        resp = self.session.get(url)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_collection(self, slug):
+        """
+        Fetch full details of a single Space by slug.
+
+        Returns: title, description, instructions (the custom system prompt),
+        suggested_queries, owner_user, thread_count, page_count, access,
+        user_permission, model_selection, and other Space metadata.
+        """
+        from urllib.parse import urlencode
+        params = urlencode({"collection_slug": slug,
+                            "version": "2.18", "source": "default"})
+        url = f"https://www.perplexity.ai/rest/collections/get_collection?{params}"
+        resp = self.session.get(url)
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_collection_threads(self, collection_uuid, limit=20, offset=0):
+        """
+        List threads inside a Space.
+
+        Returns a list of thread summaries (uuid, slug, title, last_query_datetime, ...).
+        """
+        from urllib.parse import urlencode
+        params = urlencode({"collection_uuid": collection_uuid,
+                            "limit": limit, "offset": offset,
+                            "version": "2.18", "source": "default"})
+        url = f"https://www.perplexity.ai/rest/collections/list_collection_threads?{params}"
+        resp = self.session.get(url)
         resp.raise_for_status()
         return resp.json()
 
